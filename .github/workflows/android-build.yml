@@ -23,19 +23,26 @@ jobs:
         id: gradle_build
         continue-on-error: true
         run: |
+          set +e  # Don't exit on error
           docker run --name android_build android-builder \
-          ./gradlew assembleDebug --stacktrace --no-daemon \
-          2>&1 | tee build.log
+            ./gradlew assembleDebug --stacktrace --no-daemon > build.log 2>&1
+          
+          BUILD_EXIT_CODE=$?
+          echo "exit_code=${BUILD_EXIT_CODE}" >> $GITHUB_OUTPUT
+          
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "Build failed with exit code: ${BUILD_EXIT_CODE}"
+            exit 1
+          fi
 
       # ---------- SUCCESS PATH ----------
       - name: Extract APK
-        if: steps.gradle_build.outcome == 'success'
-        continue-on-error: true
+        if: steps.gradle_build.outputs.exit_code == '0'
         run: |
           docker cp android_build:/app/app/build/outputs/apk/debug/app-debug.apk .
 
       - name: Upload APK artifact
-        if: steps.gradle_build.outcome == 'success'
+        if: steps.gradle_build.outputs.exit_code == '0'
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
@@ -43,26 +50,36 @@ jobs:
 
       # ---------- FAILURE PATH (AI ANALYSIS) ----------
       - name: Analyze build failure with Gemini
-        if: steps.gradle_build.outcome == 'failure'
+        if: steps.gradle_build.outputs.exit_code != '0'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "===== ANDROID BUILD FAILED ====="
+          echo "Exit code: ${{ steps.gradle_build.outputs.exit_code }}"
           tail -n 200 build.log
-
-          ERROR_LOG=$(tail -n 200 build.log | sed 's/"/\\"/g')
-
-          echo "===== GEMINI ANALYSIS ====="
-          curl -s https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }} \
-          -H "Content-Type: application/json" \
-          -d "{
-            \"contents\": [{
-              \"parts\": [{
-                \"text\": \"Analyze this Android Kotlin/Gradle build error and suggest a fix:\\n${ERROR_LOG}\"
+          
+          # Prepare error log for JSON (escape quotes and newlines)
+          ERROR_LOG=$(tail -n 200 build.log | jq -Rs .)
+          
+          echo "===== SENDING TO GEMINI ====="
+          RESPONSE=$(curl -s https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY} \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"contents\": [{
+                \"parts\": [{
+                  \"text\": \"Analyze this Android Kotlin/Gradle build error and suggest a fix:\\n\\n${ERROR_LOG}\"
+                }]
               }]
-            }]
-          }"
+            }")
+          
+          echo "===== GEMINI ANALYSIS ====="
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "No response"'
+          
+          # Optionally fail the workflow
+          exit 1
 
       # ---------- CLEANUP (ALWAYS) ----------
       - name: Cleanup container
         if: always()
         run: |
-          docker rm android_build || true
+          docker rm -f android_build || true
