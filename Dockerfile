@@ -9,7 +9,6 @@ COPY . /app
 RUN chmod +x ./gradlew
 
 # Download dependencies first (layer caching)
-RUN ./gradlew dependencies
+RUN ./gradlew dependencies --no-daemon || true
 
-# Build debug APK
-RUN ./gradlew assembleDebug
+
