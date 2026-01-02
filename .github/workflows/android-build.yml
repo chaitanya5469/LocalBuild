@@ -55,27 +55,26 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "===== ANDROID BUILD FAILED ====="
-          echo "Exit code: ${{ steps.gradle_build.outputs.exit_code }}"
-          tail -n 200 build.log
-          
-          # Prepare error log for JSON (escape quotes and newlines)
-          ERROR_LOG=$(tail -n 200 build.log | jq -Rs .)
-          
-          echo "===== SENDING TO GEMINI ====="
-          RESPONSE=$(curl -s https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY} \
+
+          # Extract just the key error lines
+          ERROR_SUMMARY=$(grep -A 5 "Caused by:" build.log | tail -20 | sed 's/"/\\"/g' | tr '\n' ' ')
+
+          echo "Error summary: ${ERROR_SUMMARY}"
+
+          echo "===== GEMINI ANALYSIS ====="
+
+          RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
               \"contents\": [{
                 \"parts\": [{
-                  \"text\": \"Analyze this Android Kotlin/Gradle build error and suggest a fix:\\n\\n${ERROR_LOG}\"
+                  \"text\": \"Analyze this Android build error and suggest a fix: ${ERROR_SUMMARY}\"
                 }]
               }]
             }")
-          
-          echo "===== GEMINI ANALYSIS ====="
-          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "No response"'
-          
-          # Optionally fail the workflow
+
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Error: " + (. | tostring)'
+
           exit 1
 
       # ---------- CLEANUP (ALWAYS) ----------
