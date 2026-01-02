@@ -1,3 +1,3 @@
 # LocalBuild
 For Devops testing
-![Android Build](https://github.com/<your-username>/<repo-name>/actions/workflows/android-build.yml/badge.svg)
+![Android Build](https://github.com/chaitanya5469/LocalBuild/actions/workflows/android-build.yml/badge.svg)
