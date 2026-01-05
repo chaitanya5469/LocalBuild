@@ -2,36 +2,38 @@ name: Android Docker CI with AI Failure Analysis
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------- CHECKOUT ----------
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------- DOCKER BUILD ----------
       - name: Build Docker image
         run: |
           docker build -t android-builder .
 
-      # ---------- RUN GRADLE BUILD ----------
+      # ---------- GRADLE BUILD ----------
       - name: Run Gradle build inside container (capture logs)
         id: gradle_build
         continue-on-error: true
         run: |
-          set +e  # Don't exit on error
+          set +e
           docker run --name android_build android-builder \
             ./gradlew assembleDebug --stacktrace --no-daemon > build.log 2>&1
-          
+
           BUILD_EXIT_CODE=$?
-          echo "exit_code=${BUILD_EXIT_CODE}" >> $GITHUB_OUTPUT
-          
-          if [ $BUILD_EXIT_CODE -ne 0 ]; then
-            echo "Build failed with exit code: ${BUILD_EXIT_CODE}"
+          echo "exit_code=${BUILD_EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+          if [ "$BUILD_EXIT_CODE" -ne 0 ]; then
+            echo "Build failed with exit code: $BUILD_EXIT_CODE"
             exit 1
           fi
 
@@ -56,14 +58,16 @@ jobs:
         run: |
           echo "===== ANDROID BUILD FAILED ====="
 
-          # Extract just the key error lines
-          ERROR_SUMMARY=$(grep -E "e: |error: " build.log | head -20 | sed 's/"/\\"/g' | tr '\n' ' ')
+          ERROR_SUMMARY=$(grep -E "e: |error: " build.log \
+            | head -20 \
+            | sed 's/"/\\"/g' \
+            | tr '\n' ' ')
 
-          echo "Error summary: ${ERROR_SUMMARY}"
-
+          echo "Error summary: $ERROR_SUMMARY"
           echo "===== GEMINI ANALYSIS ====="
 
-          RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}" \
+          RESPONSE=$(curl -s \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
               \"contents\": [{
@@ -73,8 +77,23 @@ jobs:
               }]
             }")
 
-          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text' > gemini.txt
+          TEXT=$(echo "$RESPONSE" | jq -r '
+            if .candidates
+               and .candidates[0]
+               and .candidates[0].content
+               and .candidates[0].content.parts
+            then
+              [.candidates[0].content.parts[].text] | join("\n")
+            else
+              empty
+            end
+          ')
 
+          if [ -z "$TEXT" ]; then
+            TEXT="Gemini did not return analysis text for this build. This can happen due to safety filtering or an empty generation."
+          fi
+
+          echo "$TEXT" > gemini.txt
 
       - name: Upload Gemini analysis
         if: steps.gradle_build.outputs.exit_code != '0'
@@ -83,12 +102,13 @@ jobs:
           name: gemini-analysis
           path: gemini.txt
 
-      # ---------- CLEANUP (ALWAYS) ----------
+      # ---------- CLEANUP ----------
       - name: Cleanup container
         if: always()
         run: |
           docker rm -f android_build || true
 
+      # ---------- FINAL STATUS ----------
       - name: Mark job as failed after AI analysis
         if: steps.gradle_build.outputs.exit_code != '0'
         run: |
