@@ -139,7 +139,7 @@ jobs:
             end
           ')
 
-          echo "$TEXT" > gemini-test-analysis.txt
+          echo "$TEXT" > gemini.txt
 
       - name: Upload Gemini test analysis
         if: steps.test_phase.outputs.exit_code != '0'
