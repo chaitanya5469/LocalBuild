@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Pure business logic (easy to unit test)
+ * Pure business logic (easy to unit tests)
  */
 object GreetingLogic {
     fun buildGreeting(name: String): String {
