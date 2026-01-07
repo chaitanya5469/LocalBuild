@@ -45,7 +45,7 @@ jobs:
           name: app-debug-apk
           path: app-debug.apk
 
-      # ---------- FAILURE PATH (BUILD AI ANALYSIS) ----------
+      # ---------- FAILURE PATH (BUILD AI ANALYSIS) -----------
       - name: Analyze build failure with Gemini
         if: steps.gradle_build.outputs.exit_code != '0'
         env:
