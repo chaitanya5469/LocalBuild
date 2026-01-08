@@ -1,4 +1,4 @@
-![Android Build](https://github.com/chaitanya5469/LocalBuild/actions/workflows/android-build.yml/badge.svg)
+![Android Build](https://github.com/chaitanya5469/AndroidBuild/actions/workflows/android-build.yml/badge.svg)
 # 🤖 Android CI/CD Pipeline with AI-Powered Failure Analysis
 
 > A **fully automated, containerized Android CI/CD pipeline** that builds Android applications using Docker, executes tests via GitHub Actions, and performs **AI-powered failure analysis using Google Gemini** ✨
